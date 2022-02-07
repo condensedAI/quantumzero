@@ -7,7 +7,7 @@ import random
 from qutip import * 
 from annealer import Annealer
 
-import mcts
+import mcts as mod_mcts
 
 def linear(num_frequency_components, T, HB, HP, psi0, psif):
     annealer = Annealer(0.5, T, HB, HP, psi0, psif)   
@@ -80,30 +80,38 @@ def StochasticDescent(num_qubits, num_frequency_components, T, HB,HP,psi0,psif):
     return obs1, fid
 
 
-def mcts(data, n_qubit,T, num_frequency_components ,HB,HP,psi0,psif,ncandidates):
+def mcts(data, n_qubit,T, num_frequency_components ,H0,Hf,psi0,psif,ncandidates, cost_function_type):
 
-    annealer = Annealer(0.5, T, HB,HP,psi0,psif)   
+    annealer = Annealer(0.5, T, H0,Hf, psi0, psif)   
 
     def get_reward(struct):
         delta=0.1             ##update lenth
         De=40  #20
 
-        obs=np.zeros((num_frequency_components), dtype=np.float64)   
+        solution=np.zeros((num_frequency_components), dtype=np.float64)   
         for i in range(num_frequency_components):
-            obs[i]=-0.2+struct[i]%De*0.01
+            solution[i]=-0.2+struct[i]%De*0.01
 
         energy, fidelity =  annealer.anneal(solution)
-        cond=fidelity  
 
+        if cost_function_type == 'energy':
+            cond=-energy[-1]
+        elif cost_function_type == 'fidelity':
+            cond=fidelity[-1]
+        else:
+            raise ValueError(f'wrong cost function {cost_function_type}')
+        
         return cond
 
-    myTree=mcts.Tree(data,T,no_positions=5, atom_types=list(range(40)), atom_const=None, get_reward=get_reward, positions_order=list(range(5)),
+    myTree=mod_mcts.Tree(data,T,no_positions=5, atom_types=list(range(40)), atom_const=None, get_reward=get_reward, positions_order=list(range(5)),
             max_flag=True,expand_children=10, play_out=5, play_out_selection="best", space=None, candidate_pool_size=100,
              ucb="mean")
 
     res=myTree.search(display=True,no_candidates=ncandidates)
 
     fidelity=res.optimal_fx  
-    obs=res.optimal_candidate 
+    obslist=res.optimal_candidate
+ 
+    solution=-0.2+np.array(obslist)%40*0.01
 
-    return obs,fidelity
+    return solution,fidelity
