@@ -5,7 +5,7 @@ from numpy import *
 class Annealer():
     def __init__(self, dt, T, H0, Hf, psi0, psif):
         self.T = T
-        self.dt = 0.5
+        self.dt = dt
         
         self.psi0 = psi0
         self.psif = psif
@@ -25,24 +25,22 @@ class Annealer():
         for i, b in enumerate(list(bstate)):
             args['b{}'.format(i+1)] = b 
             
-        # Define the step size
-        dt=0.5
         # The total number of steps
-        NL=self.T/dt
+        NL=self.T/self.dt
         # Create a grid of linearly spaced time points
-        t = np.linspace(dt, self.T-dt, int(NL))
+        t = np.linspace(self.dt, self.T, int(NL))
         
         # Perform the full time evolution
         H = [[self.H0, lambda t,args : 1 - self.s(t,args)], [self.Hf, self.s]]
         output = mesolve(H, self.psi0, t, args=args)
-      
-        # Take the final state...
-        final_state = output.states[-1]
-        # ... and compute the overlap with the perfect final state ...
-        c = (self.psif.dag()) * final_state    ####overlap
-        fidelity = np.abs(c[0,0])**2
-        # ... and its energy wrt the final Hamiltonian
-        x = final_state.dag() * self.Hf * final_state      ###energy
-        energy= x[0,0]
+        
+        # Compute the fidelity in all intermediate steps defined by the array t      
+        fidelity = []
+        for state in output.states:
+            c = state.overlap(self.psif.dag())
+            fidelity.append(np.abs(c)**2)
+
+        # Compute the expectation value of the final Hamiltonian at all intermediate steps
+        energy=expect(self.Hf, output.states)
     
         return energy, fidelity
