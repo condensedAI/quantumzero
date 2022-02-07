@@ -10,7 +10,7 @@ def create_3SAT_H_and_psi(num_qubits,result):
     for i in np.arange(num_qubits):
         operator_list = [single_qubit_h if j == i else identity(2) for j in range(num_qubits)]
         H_initial = H_initial + tensor(operator_list)
-    H_initial = Qobj(H_initial.data.reshape(128,128))        
+    H_initial = Qobj(H_initial.data.reshape(N,N))        
         
     # The initial state
     psi_initial = Qobj( np.sqrt(1/N) * np.ones(N) )
