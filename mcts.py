@@ -259,7 +259,7 @@ class Tree:
             sys.exit("Please specify no_candidates")
         else:
             fidelity=0.5
-            while  fidelity<0.7 or len(self.chkd_candidates) < no_candidates :
+            while  fidelity<0.99 and len(self.chkd_candidates) < no_candidates :
             #while len(self.chkd_candidates) < no_candidates and fidelity<sdfid :
                 current = self.root.select(self.max_flag, self.ucb_mean)     ###select
                 #print("current",current,current.level)
@@ -365,10 +365,10 @@ class Tree:
                  
              
                 print(round_no,optimal_candidate,obs,optimal_fx)   ##########)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                f = open(r'C:\Users\yuqinchen\Desktop\a'+str(self.data)+'a.txt','a+')
-                f.writelines([str(fidelity)])
-                f.writelines(['\n'])
-                f.close()
+                #f = open(r'C:\Users\yuqinchen\Desktop\a'+str(self.data)+'a.txt','a+')
+                #f.writelines([str(fidelity)])
+                #f.writelines(['\n'])
+                #f.close()
                 
                 if round_no %10==0:
                    # print(Counter(printcount1))
