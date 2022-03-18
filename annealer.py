@@ -47,7 +47,7 @@ class Annealer():
         return energy, fidelity
 
 class DigitalAnnealer():
-    def __init__(self, num_qubits, n_trotter_steps , H0, Hf, psi0, psif):
+    def __init__(self, num_qubits, n_trotter_steps, n_frequency_components, H0, Hf, psi0, psif):
         self.P = n_trotter_steps
         self.H0 = H0
         self.Hf = Hf
@@ -55,7 +55,29 @@ class DigitalAnnealer():
         self.psif = psif
         self.num_qubits = num_qubits
         self.N=2**num_qubits
-    
+        self.n_frequency_components = n_frequency_components
+
+        self.sin_matrix, self.cos_matrix = self.fourier_transform(self.P, self.n_frequency_components)
+
+
+    def fourier_transform(self, num_trotter_step, num_frequency_components):
+        '''
+        creates two matrix to derive the variational paramters gamma and beta from the fourier components
+        ref. Zhou, Lukin et al PRX2021
+        '''
+        p_ind=(np.arange(1,num_trotter_step+1).reshape([num_trotter_step,1])-0.5)*np.pi/num_trotter_step
+        q_ind=np.arange(1,num_frequency_components+1).reshape([1,num_frequency_components])-0.5
+
+        cos_matrix = np.cos(np.dot(p_ind,q_ind))
+        sin_matrix = np.sin(np.dot(p_ind,q_ind)) 
+        
+        return sin_matrix, cos_matrix
+
+    def uv2schedule(self,u,v):
+        gamma = np.dot(self.sin_matrix,u).reshape(-1)
+        beta = np.dot(self.cos_matrix,v).reshape(-1)
+        return gamma, beta
+
     def x_rotation(self, beta):
         '''
         Perform a rotation of the angle beta along the x axis. 
