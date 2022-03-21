@@ -29,7 +29,7 @@ class Annealer():
         # The total number of steps
         NL=self.T/self.dt
         # Create a grid of linearly spaced time points
-        t = np.linspace(self.dt, self.T, int(NL))
+        t = np.linspace(0, self.T, int(NL+1))
         
         # Perform the full time evolution
         H = [[self.H0, lambda t,args : 1 - self.s(t,args)], [self.Hf, self.s]]
@@ -73,9 +73,13 @@ class DigitalAnnealer():
         
         return sin_matrix, cos_matrix
 
-    def uv2schedule(self,u,v):
-        gamma = np.dot(self.sin_matrix,u).reshape(-1)
-        beta = np.dot(self.cos_matrix,v).reshape(-1)
+    def uv2schedule(self,u,v, optimization_space='frequency'):
+        if optimization_space =='frequency':
+            gamma = np.dot(self.sin_matrix,u).reshape(-1)
+            beta = np.dot(self.cos_matrix,v).reshape(-1)
+        else:
+            gamma = u
+            beta = v
         return gamma, beta
 
     def x_rotation(self, beta):
@@ -98,8 +102,8 @@ class DigitalAnnealer():
         beta: n_trotter_steps dimensional array with the time steps (rotations) for the evolution wit H0
         get_gradient: if True, computes the derivative of the energy with respect to the variational parameters
         '''
-        assert gamma.size == self.P, f"gamma does not have the correct legth {self.P}" 
-        assert beta.size == self.P, f"beta does not have the correct legth {self.P}" 
+        assert gamma.size == self.P, f"gamma does not have the correct legth" + str(gamma.size) 
+        assert beta.size == self.P, f"beta does not have the correct legth " +str(beta.size)
         
         state_m = [self.psi0]
         for m in range(self.P):

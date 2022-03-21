@@ -80,31 +80,59 @@ def StochasticDescent(num_qubits, num_frequency_components, T, HB,HP,psi0,psif):
     print("iter:",iter,"ncan:",ncan)
     return obs1, fid
 
-
-def mcts(data, n_qubit,T, num_frequency_components ,H0,Hf,psi0,psif,ncandidates, cost_function_type):
-
-    annealer = Annealer(0.5, T, H0,Hf, psi0, psif)   
-
-    def get_reward(struct):
-        delta=0.1             ##update lenth
-        De=40  #20
-
-        solution=np.zeros((num_frequency_components), dtype=np.float64)   
+def reward_function(x, annealer, annealing_type, num_frequency_components, cost_function_type='energy', optimization_space='frequency', delta=0.01, De=40):
+    
+    if annealing_type=='analog':
+        solution=np.zeros((num_frequency_components), dtype=np.float64)
         for i in range(num_frequency_components):
-            solution[i]=-0.2+struct[i]%De*0.01
+            solution[i]=-0.2+x[i]%De*delta
 
         energy, fidelity =  annealer.anneal(solution)
 
-        if cost_function_type == 'energy':
-            cond=-energy[-1]
-        elif cost_function_type == 'fidelity':
-            cond=fidelity[-1]
+    elif annealing_type =='digital':
+        if optimization_space=='frequency':
+            u = np.array(x[:num_frequency_components]).reshape([num_frequency_components,1])
+            v = np.array(x[num_frequency_components:]).reshape([num_frequency_components,1])
+            gamma, beta = annealer.uv2schedule(u,v)
+
+        elif optimization_space=='t_schedule':
+            gamma=np.array(x[:annealer.P])
+            beta=np.array(x[annealer.P:])
+
         else:
-            raise ValueError(f'wrong cost function {cost_function_type}')
-        
+            raise ValueError(f'wrong optimization space: {optimization_space}')
+
+        energy, fidelity = annealer.digital_evo(gamma,beta)
+
+    if cost_function_type == 'energy':
+        cond = -energy[-1]
+    elif cost_function_type == 'fidelity':
+        cond = fidelity[-1]
+    else:
+        raise ValueError(f'wrong cost function type: {cost_function_type}')
+    
+    return cond
+
+def mcts(data, n_qubit,T, num_frequency_components , num_trotter_steps, H0,Hf,psi0,psif,ncandidates, cost_function_type='energy',annealing_type='analog', optimization_space='frequency'):
+
+    if annealing_type=='analog':
+        annealer = Annealer(T/num_trotter_steps, T, H0,Hf, psi0, psif)
+        n_search = num_frequency_components
+    elif annealing_type=='digital':
+        annealer = DigitalAnnealer(n_qubit, num_trotter_steps, num_frequency_components, H0, Hf, psi0, psif)
+        if optimization_space =='frequency':
+            n_search = 2*num_frequency_components
+        else:
+            n_search = 2*num_trotter_steps
+    else:
+        raise ValueError(f'wrong annealing type {annealing_type} ')
+
+    def get_reward(struct):
+        cond = reward_function(struct, annealer, annealing_type, num_frequency_components, 
+                                cost_function_type=cost_function_type, optimization_space=optimization_space) 
         return cond
 
-    myTree=mod_mcts.Tree(data,T,no_positions=5, atom_types=list(range(40)), atom_const=None, get_reward=get_reward, positions_order=list(range(5)),
+    myTree=mod_mcts.Tree(data,T,no_positions=n_search, atom_types=list(range(40)), atom_const=None, get_reward=get_reward, positions_order=list(range(n_search)),
             max_flag=True,expand_children=10, play_out=5, play_out_selection="best", space=None, candidate_pool_size=100,
              ucb="mean")
 
@@ -151,13 +179,6 @@ def qaoa(n_qubit, num_frequency_components,num_trot_step, H0, Hf, psi0, psif, nc
         jacobian=False
 
     if optimization_space =='frequency':
-        #notation of Zhou et al. PRX 2021 for the Fourier optimization of QAOA
-        '''p_ind=(np.arange(1,num_trot_step+1).reshape([num_trot_step,1])-0.5)*np.pi/num_trot_step
-        q_ind=np.arange(1,num_frequency_components+1).reshape([1,num_frequency_components])-0.5
-
-        # we create two num_trot_steps x num_frequency_components matrices fro writing the schdule in fourier space
-        cos_matrix = np.cos(np.dot(p_ind,q_ind))
-        sin_matrix = np.sin(np.dot(p_ind,q_ind))'''
         n_search = num_frequency_components
 
     elif optimization_space=='t_schedule':
@@ -213,7 +234,9 @@ def qaoa(n_qubit, num_frequency_components,num_trot_step, H0, Hf, psi0, psif, nc
     for n_opt in range(ncandidates):
         if x0 is None:
             x0 = np.random.rand(2*n_search)
-        
+        else:
+             x0+=np.random.rand(2*n_search)*0.1
+
         if jacobian: 
             res = minimize(get_reward, x0, jac=get_gradient, args=(cost_function_type, optimization_space),  method='BFGS',options={'gtol':1e-2, 'disp': True})
         else: 
@@ -221,6 +244,6 @@ def qaoa(n_qubit, num_frequency_components,num_trot_step, H0, Hf, psi0, psif, nc
         solution.append(res.x)
         reward.append(res.fun)
         num_queries.append(res.nfev)
-        print('ggg', res.jac)
-
-    return solution, reward, num_queries
+        
+    best_result = np.argmin(np.array(reward))
+    return solution[best_result], reward[best_result], np.array(num_queries).sum()
