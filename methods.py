@@ -85,7 +85,7 @@ def reward_function(x, annealer, annealing_type, num_frequency_components, cost_
     if annealing_type=='analog':
         solution=np.zeros((num_frequency_components), dtype=np.float64)
         for i in range(num_frequency_components):
-            solution[i]=-0.2+x[i]%De*delta
+            solution[i]= -0.2+x[i]%De * delta
 
         energy, fidelity = annealer.anneal(solution)
 
@@ -115,10 +115,10 @@ def reward_function(x, annealer, annealing_type, num_frequency_components, cost_
 
     return cond
 
-def mcts(data, n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, psif, ncandidates, cost_function_type='energy', annealing_type='analog', optimization_space='frequency'):
+def mcts(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, psif, ncandidates, cost_function_type='energy', annealing_type='analog', optimization_space='frequency'):
 
     if annealing_type=='analog':
-        annealer = AnalogAnnealer(T/num_trotter_steps, T, H0,Hf, psi0, psif)
+        annealer = AnalogAnnealer(T/num_trotter_steps, T, H0, Hf, psi0, psif)
         n_search = num_frequency_components
     elif annealing_type=='digital':
         annealer = DigitalAnnealer(n_qubit, num_trotter_steps, num_frequency_components, H0, Hf, psi0, psif)
@@ -134,7 +134,7 @@ def mcts(data, n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, 
                                 cost_function_type=cost_function_type, optimization_space=optimization_space)
         return cond
 
-    myTree = mod_mcts.Tree(data, T, no_positions=n_search,
+    mctree = mod_mcts.Tree(no_positions=n_search,
                                 atom_types=list(range(40)),
                                 atom_const=None,
                                 get_reward=get_reward,
@@ -147,11 +147,46 @@ def mcts(data, n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, 
                                 candidate_pool_size=100,
                                 ucb="mean")
 
-    res = myTree.search(display=True,no_candidates=ncandidates)
+    solution, fidelity = mctree.search(display=True, no_candidates=ncandidates)
 
-    fidelity = res.optimal_fx
-    obslist = res.optimal_candidate
-    solution = -0.2+np.array(obslist)%40*0.01
+    solution = -0.2+np.array(solution)%40*0.01
+
+    return solution, fidelity
+
+def mcts_v2(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, psif, ncandidates, cost_function_type='energy', annealing_type='analog', optimization_space='frequency'):
+
+    if annealing_type=='analog':
+        annealer = AnalogAnnealer(T/num_trotter_steps, T, H0, Hf, psi0, psif)
+        n_search = num_frequency_components
+    elif annealing_type=='digital':
+        annealer = DigitalAnnealer(n_qubit, num_trotter_steps, num_frequency_components, H0, Hf, psi0, psif)
+        if optimization_space =='frequency':
+            n_search = 2*num_frequency_components
+        else:
+            n_search = 2*num_trotter_steps
+    else:
+        raise ValueError(f'Unknown annealing type: {annealing_type}')
+
+    def get_reward(struct):
+        cond = reward_function(struct, annealer, annealing_type, num_frequency_components,
+                                cost_function_type=cost_function_type, optimization_space=optimization_space)
+        return cond
+
+    mctree = mod_mcts.Tree(no_positions=n_search,
+                                atom_types=list(range(40)),
+                                atom_const=None,
+                                get_reward=get_reward,
+                                positions_order=list(range(n_search)),
+                                max_flag=True,
+                                expand_children=10,
+                                play_out=5,
+                                play_out_selection="best",
+                                space=None,
+                                candidate_pool_size=100,
+                                ucb="mean")
+
+    solution, fidelity = mctree.find_best_candidate(ncandidates)
+    solution = -0.2+np.array(solution)%40*0.01
 
     return solution, fidelity
 
