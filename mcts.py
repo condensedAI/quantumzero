@@ -8,94 +8,108 @@ import math
 import ast
 from collections import Counter
 
-import matplotlib
-import matplotlib.pyplot as plt
-
 class Node:
     def __init__(self, value, children_values, parent=None, level=0, position=None, struct=None, v=0, w=0.0,
-                 children=None, min_range=float(math.pow(10, 10)), max_range=0.0, adjust_val=1):
+                 children={}, min_range=float(math.pow(10, 10)), max_range=0.0):
 
         self.value = value
         self.parent = parent
+
+        # Depth in tree
         self.level = level
-        self.position = position
+
+        # The actual state for this node
         self.struct = struct
+        # The current index into the struct, in case we are not searching in
+        # a standard order
+        self.position = position
+
+        # Visit count and score, for UCT
         self.v = v
         self.w = w
-        self.children = children
+
         self.min_range = min_range
         self.max_range = max_range
-        self.adjust_val = adjust_val
+
+
+        self.children = children
         self.children_values = children_values
 
     def has_children(self):
-        return self.children is not None
+        return len(self.children) != 0
 
     def has_all_children(self):
-        if self.has_children():
-            return len(self.children) == len(self.children_values)
-        else:
-            return False
+        return len(self.children) == len(self.children_values)
+
+    def select_best_child(self):
+        scores = [(child.w / child.v) + (1 if max_flag else -1)*(c * (math.sqrt((2 * math.log(self.v)) / child.v))) for child in self.children]
+        return self.children[np.argmax(scores)]
 
     def select(self, max_flag, ucb_mean):
-        if self.has_all_children():
-            #print(self.adjust_val)
-            c = 2#((math.sqrt(2)/2)*(self.max_range-self.min_range))   #*self.adjust_val
-            u_scores = {}
-            if max_flag:
-                for child in iter(self.children.values()):
-                    if child is not None:
-                        if ucb_mean:
-                            u_scores[child.value] = ((child.w / child.v) + (c * (math.sqrt((2 * math.log(self.v)) /
-                                                                                       child.v))))
-                        else:
-                            u_scores[child.value] = child.max_range + (c * (math.sqrt((2 * math.log(self.v)) / child.v)))
-                max_idxs = [i for i, x in iter(u_scores.items()) if x == max(iter(u_scores.values()))]
-                idx = np.random.choice(max_idxs)
-            else:
-                for child in iter(self.children.values()):
-                    if child is not None:
-                        if ucb_mean:
-                            u_scores[child.value] = ((child.w / child.v) - (c * (math.sqrt((2 * math.log(self.v)) /
-                                                                                       child.v))))
-                        else:
-                            u_scores[child.value] = child.min_range + (c * (math.sqrt((2 * math.log(self.v)) / child.v)))
-                min_idxs = [i for i, x in iter(u_scores.items()) if x == min(iter(u_scores.values()))]
-                idx = np.random.choice(min_idxs)
-            return self.children[idx].select(max_flag, ucb_mean)
-        else:
+        # If this node has not yet fully been expanded, we stop the recursion here
+        if not self.has_all_children():
             return self
 
-    def bck_prop(self, e):
-        self.v += 1
-        self.w += e
-        if e > self.max_range:
-            self.max_range = e
-        if e < self.min_range:
-            self.min_range = e
+        # If it has all children expanded, make a selection (using UCT) on those
+        # and recursively search for the next.
+        c = 2
+        u_scores = {}
+        for child in iter(self.children.values()):
+            if ucb_mean:
+                u_scores[child.value] = ((child.w / child.v) + (1 if max_flag else -1)*(c * (math.sqrt((2 * math.log(self.v)) / child.v))))
+            else:
+                u_scores[child.value] = child.max_range + (c * (math.sqrt((2 * math.log(self.v)) / child.v)))
+
+        if max_flag:
+            idxs = [i for i, x in iter(u_scores.items()) if x == max(iter(u_scores.values()))]
+        else:
+            idxs = [i for i, x in iter(u_scores.items()) if x == min(iter(u_scores.values()))]
+        idx = np.random.choice(idxs)
+
+        # Recursively search from the selected child node
+        return self.children[idx].select(max_flag, ucb_mean)
+
+    def back_prop(self, reward):
+        # Back propagate through this node
+        self.v += 1  # Increase visit count
+        self.w += reward  # Increase value
+
+        # update max and min rewards seen
+        if reward > self.max_range:
+            self.max_range = reward
+        if reward < self.min_range:
+            self.min_range = reward
+
+        # Continue back propagating to parent
         if self.parent is not None:
-            return self.parent.bck_prop(e)
+            return self.parent.back_prop(reward)
 
     def adjust_c(self, adjust_value):
         self.adjust_val += adjust_value
         if self.parent is not None:
             return self.parent.adjust_c(adjust_value)
 
-    def expand(self, position, expand_children):
-        if self.children is None:
-            self.children = {}
-        expanded = []
+    def expand(self, position, num_children_to_expand):
         avl_child_values = list(set(self.children_values) - set(self.children.keys()))
-        if expand_children > len(avl_child_values):
-            no_chosen_values = len(avl_child_values)
-        else:
-            no_chosen_values = expand_children
+
+        # If we are asked to expand more children than there are left, we cap the number
+        no_chosen_values = np.min([avl_child_values, num_children_to_expand])
+
+        # Pick them at random
         chosen_values = np.random.choice(avl_child_values, no_chosen_values, replace=False)
+        expanded = []
         for child_value in chosen_values:
             child_struct = self.struct[:]
             child_struct[position] = child_value
-            self.children[child_value] = Node(value=child_value, children_values=self.children_values, parent=self,
-                                              level=self.level + 1, position=position, struct=child_struct)
+
+            # Add this expanded node to the list of children
+            self.children[child_value] = Node(value=child_value, children_values=self.children_values,
+                                                parent=self,
+                                                level=self.level + 1,
+                                                position=position,
+                                                struct=child_struct)
+
+            # Add this node to the list
             expanded.append(self.children[child_value])
         return expanded
 
@@ -103,6 +117,7 @@ class Node:
         nodes = 1
         visits = self.v
         depth = self.level
+
         if self.has_children():
             for child in iter(self.children.values()):
                 if child is not None:
@@ -114,28 +129,27 @@ class Node:
         return nodes, visits, depth
 
 
-
 class Tree:
-    def __init__(self,data, T,get_reward, positions_order="reverse", max_flag=True, expand_children=1,
-                 space=None, candidate_pool_size=None, no_positions=None, atom_types=None, atom_const=None, play_out=1, play_out_selection="best",ucb="mean"):
-        print("mcts")
+    def __init__(self, data, T, get_reward, positions_order="reverse", max_flag=True, expand_children=1,
+                 space=None, candidate_pool_size=None, no_positions=None, atom_types=None, atom_const=None, play_out=1, play_out_selection="best", ucb="mean"):
+
         self.data=data
         self.T=T
+
         if space is None:
             self.space=None
             if (no_positions is None) or (atom_types is None):
-                sys.exit("no_positions and atom_types should not be None")
+                raise ValueError("no_positions and atom_types should not be None")
             else:
                 self.no_positions = no_positions
                 self.atom_types = atom_types
                 self.atom_const = atom_const
-      
                 self.candidate_pool_size = candidate_pool_size
         else:
             self.space = space.copy()
-            self.one_hot_space=self.one_hot_encode(self.space)
+            self.one_hot_space = self.one_hot_encode(self.space)
             self.no_positions = space.shape[1]
-            self.atom_types = np.unique(space)     ####unique 是指只记录其间出现的可能性
+            self.atom_types = np.unique(space)
 
         if positions_order == "direct":
             self.positions_order = list(range(self.no_positions))
@@ -148,41 +162,45 @@ class Tree:
         else:
             sys.exit("Please specify positions order as a list")
 
-        self.chkd_candidates = collections.OrderedDict()
-        self.max_flag = max_flag
-        #print("max_flag",max_flag)
-        self.root = Node(value='R', children_values=self.atom_types, struct=[None]*self.no_positions)
-        self.acc_threshold = 0.1                                                  
-        self.get_reward = get_reward
-
+        # If we want to always expand all children, instead of just 1, update
         if expand_children == "all":
             self.expand_children = len(self.atom_types)
+
         elif isinstance(expand_children, int):
             if (expand_children > len(self.atom_types)) or (expand_children == 0):
                 sys.exit("Please choose appropriate number of children to expand")
             else:
                 self.expand_children = expand_children
-        self.result = Result()      ##调用结果这个程序
-        self.play_out = play_out
+
         if play_out_selection == "best":
             self.play_out_selection_mean = False
         elif play_out_selection =="mean":
             self.play_out_selection_mean = True
         else:
-            sys.exit("Please set play_out_selection to either mean or best")
-
-
+            raise ValueError("Please set play_out_selection to either mean or best")
 
         if ucb == "best":
             self.ucb_mean = False
-        elif ucb =="mean":
+        elif ucb == "mean":
             self.ucb_mean = True
         else:
-            sys.exit("Please set ucb to either mean or best")
+            raise ValueError("Please set ucb to either mean or best")
 
+        self.chkd_candidates = collections.OrderedDict()
+        self.max_flag = max_flag
+        self.acc_threshold = 0.1
+        self.get_reward = get_reward
+
+        # Create root node
+        self.root = Node(value='R', children_values=self.atom_types, struct=[None]*self.no_positions)
+
+        self.result = Result()
+        self.play_out = play_out
 
     def _enumerate_cand(self, struct, size):
+        # Make a copy
         structure = struct[:]
+
         chosen_candidates = []
         if self.atom_const is not None:
             for value_id in range(len(self.atom_types)):
@@ -199,11 +217,17 @@ class Tree:
                             cand[pos] = self.atom_types[value_id]
                 chosen_candidates.append(cand)
         else:
-            for pout in range(size):
+            for play_out_number in range(size):
+                # Copy current set of components
                 cand = structure[:]
+
+                # Get empty positions
                 avl_pos = [i for i, x in enumerate(cand) if x is None]
+                # And for each, fill in a random choice of action
                 for pos in avl_pos:
                     cand[pos] = np.random.choice(self.atom_types)
+
+                # Add to the list
                 chosen_candidates.append(cand)
         return chosen_candidates
 
@@ -218,222 +242,127 @@ class Tree:
 
     def _simulate(self, struct, lvl):
         if self.space is None:
-            return self._enumerate_cand(struct,self.play_out)
-  
+            return self._enumerate_cand(struct, self.play_out)
 
+    def rollout(self, start_node, num_rollouts):
+        candidates = self._enumerate_cand(start_node.struct, num_rollouts)
 
+        rewards = []
+        for candidate in candidates:
+            if str(candidate.struct) not in self.chkd_candidates.keys():
+                self.chkd_candidates[str(candidate.struct)] = self.get_reward(candidate.struct)
+            rewards.append(self.chkd_candidates[str(candidate.struct)])
+        return rewards
 
-    def _simulate_matrix(self, struct):
-        structure = struct[:]
-        chosen_candidates = []
-        filled_pos = [i for i, x in enumerate(structure) if x is not None]
-        filled_values = [x for i, x in enumerate(structure) if x is not None]
-        sub_data = self.space[:, filled_pos]
-        avl_candidates_idx = np.where(np.all(sub_data == filled_values, axis=1))[0]
-        if len(avl_candidates_idx) != 0:
-            if self.play_out <= len(avl_candidates_idx):
-                chosen_idxs = np.random.choice(avl_candidates_idx, self.play_out)
-            else:
-                chosen_idxs = np.random.choice(avl_candidates_idx, len(avl_candidates_idx))
-            for idx in chosen_idxs:
-                chosen_candidates.append(list(self.space[idx]))
-        return chosen_candidates
+    def get_best_next_node(self, start_node, num_simulations):
+        """
+        Perform num_simulations of tree expansion
+        """
+        for i in range(num_simulations):
+            # Expand
+            current = start_node.select(self.max_flag, self.ucb_mean)
 
+            # Get reward
+            rewards = self.rollout(current, self.play_out)
 
+            # Back propagate the reward
+            current.back_prop(rewards)
 
+        # Return best
+        return start_node.select_best_child()
+
+    def find_best_candidate(self, num_simulations=100):
+        current = self.root
+        for m in range(self.no_positions):
+            # Perform num_simulations to get the next best node
+            next_node = get_best_next_node(current, num_simulations)
+            current = next_node
+        return current.struct[:]
 
     def search(self, no_candidates=None, display=True):
-
-                 
-            
-        printcount1=[]
-        printcount2=[]
-        printcount3=[]
-        printcount4=[]
-        printcount5=[]
-        
         prev_len = 0
         prev_current = None
         round_no = 1
-        if no_candidates is None :
-            sys.exit("Please specify no_candidates")
-        else:
-            fidelity=0.5
-            while  fidelity<0.99 and len(self.chkd_candidates) < no_candidates :
-            #while len(self.chkd_candidates) < no_candidates and fidelity<sdfid :
-                current = self.root.select(self.max_flag, self.ucb_mean)     ###select
-                #print("current",current,current.level)
-                
-                if current.level == self.no_positions:
-                    struct = current.struct[:]
-                    if str(struct) not in self.chkd_candidates.keys():           #
-                        e = self.get_reward(struct)                              #reward
-                        self.chkd_candidates[str(struct)] = e
-                    else:
-                        e = self.chkd_candidates[str(struct)]
-                    current.bck_prop(e)                                          ##bck_prop                                             
+
+        if no_candidates is None:
+            raise ValueError("Please specify no_candidates")
+            return
+
+        fidelity = 0
+        # Search until we hit a good fidelity or until we've checked more candidates than asked for
+        while fidelity<0.99 and len(self.chkd_candidates) < no_candidates:
+
+            # Select new node (traverse tree from root until we hit a non-fully expanded node)
+            current = self.root.select(self.max_flag, self.ucb_mean)
+
+            # Check if we have reached the bottom layer
+            if current.level == self.no_positions:
+                # See if we've already visited this node,
+                # and either use it's already computed reward or
+                # compute and store it
+                struct = current.struct[:]
+                if str(struct) not in self.chkd_candidates.keys():
+                    e = self.get_reward(struct)
+                    self.chkd_candidates[str(struct)] = e
                 else:
-                    position = self.positions_order[current.level]
-                    try_children = current.expand(position, self.expand_children)        #expand
-                   
-                    for try_child in try_children:
-                        #print( try_child)
-                        
-                        
-                        all_struct = self._simulate(try_child.struct,try_child.level)           #simulaten_playout=5
-                        #if len(all_struct) != 0:
-                           #print(all_struct)
-                   
-                        rewards = []
-                        for struct in all_struct:
-                           # print(struct)
-                            printcount1.append(struct[0])
-                            printcount2.append(struct[1])
-                            printcount3.append(struct[2])
-                            printcount4.append(struct[3])
-                            printcount5.append(struct[4])
-                            
-                            
-                            
-                            if str(struct) not in self.chkd_candidates.keys():
-                                e = self.get_reward(struct)
-                                if e is not False:
-                                    self.chkd_candidates[str(struct)] = e       #reward 
-                            else:
-                                e = self.chkd_candidates[str(struct)]
-                            rewards.append(e)
-                        rewards[:] = [x for x in rewards if x is not False]
-                        
-                        if len(rewards)!=0:
-                            
-                            if self.play_out_selection_mean:
-                                best_e = np.mean(rewards)
-                            else:
-                                if self.max_flag:
-                                    best_e = max(rewards)
-                                else:
-                                    #print("min")
-                                    best_e = min(rewards)
-                            try_child.bck_prop(best_e)                           ##bck_prop     
+                    e = self.chkd_candidates[str(struct)]
+
+                # Update the tree
+                current.back_prop(e)
+
+            else:
+                # Pick the next frequency component to optimize
+                position = self.positions_order[current.level]
+
+                # Expand node
+                try_children = current.expand(position, self.expand_children)
+
+                for try_child in try_children:
+
+                    # Random rollout from here, meaning run until bottom
+                    all_struct = self._simulate(try_child.struct, try_child.level)
+
+                    rewards = []
+                    for struct in all_struct:
+                        # Add reward to list if it is not there yet
+                        if str(struct) not in self.chkd_candidates.keys():
+                            self.chkd_candidates[str(struct)] = self.get_reward(struct)
+                        e = self.chkd_candidates[str(struct)]
+                        rewards.append(e)
+
+                    rewards[:] = [x for x in rewards if x is not False]
+
+                    # If there were new cases
+                    if len(rewards)!=0:
+                        if self.play_out_selection_mean:
+                            best_e = np.mean(rewards)
                         else:
-                            print("len(rewards)=0")                                        
-                            current.children[try_child.value] = None
-                            all_struct = self._simulate(current.struct,current.level)      
-                            rewards = []
-                            for struct in all_struct:
-                                if str(struct) not in self.chkd_candidates.keys():
-                                    e = self.get_reward(struct)
-                                    self.chkd_candidates[str(struct)] = e
-                                else:
-                                    e = self.chkd_candidates[str(struct)]
-                                rewards.append(e)
-                            if self.play_out_selection_mean:
-                                best_e = np.mean(rewards)
-                            else:
-                                if self.max_flag:
-                                    best_e = max(rewards)
-                                else:
-                                    best_e = min(rewards)
-                            current.bck_prop(best_e)                             ##bck_prop
-                            
-                if (current == prev_current) and (len(self.chkd_candidates) == prev_len):
-                    adjust_val = (no_candidates-len(self.chkd_candidates))/no_candidates
-                    if adjust_val < self.acc_threshold:
-                        adjust_val = self.acc_threshold
-                    #adjust_c
-                    current.adjust_c(adjust_val)  
-                    
-                prev_len = len(self.chkd_candidates)
-                prev_current = current
-                
-                optimal_fx=max(iter(self.chkd_candidates.values()))    #################### 
-                DS=[(ast.literal_eval(x), v) for (x,v) in self.chkd_candidates.items()]
-                optimal_candidate = [k for (k, v) in DS if v == optimal_fx]
-                fidelity=optimal_fx 
-                
-                De=40
-                ss=np.array(optimal_candidate)
-                obs=np.zeros(( 5), dtype=np.float64)
-                for i in range(5):
-                    #obs[i]=-0.2/(i+1)+struct[i]%De*0.01/(i+1)
-                    #obs[i]=-0.4+struct[i]%De*0.02
-                    obs[i]=-0.2+ss[0,i]%De*0.01
-                    
-              #  pathdesign=GroverSearchEfficient(6,28,5) 
-                    
-             #   energy,fidelity = pathdesign.evolution(obs) 
-                 
-             
-                print(round_no,optimal_candidate,obs,optimal_fx)   ##########)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                #f = open(r'C:\Users\yuqinchen\Desktop\a'+str(self.data)+'a.txt','a+')
-                #f.writelines([str(fidelity)])
-                #f.writelines(['\n'])
-                #f.close()
-                
-                if round_no %10==0:
-                   # print(Counter(printcount1))
-                   # print(Counter(printcount2))
-                    #print(Counter(printcount3))
-                    #print(Counter(printcount4))
-                    #print(Counter(printcount5))
-                    
-                    labels, values = zip(*Counter(printcount1).items())
+                            best_e = max(rewards) if self.max_flag else min(rewards)
 
-                    indexes = np.arange(len(labels))
-                    width = 1
-                    
-                    #plt.bar(indexes, values, width)
-                    #plt.xticks(indexes + width * 0.5, labels)
-                    #plt.show()
-                    
-                    #labels, values = zip(*Counter(printcount2).items())
+                        # Back propagate
+                        try_child.back_prop(best_e)
 
-                    #indexes = np.arange(len(labels))
-                    #width = 1
-                    
-                    #plt.bar(indexes, values, width)
-                    #plt.xticks(indexes + width * 0.5, labels)
-                    #plt.show()
-                    
-                    #labels, values = zip(*Counter(printcount3).items())
+            # Adjust C constant for UCT
+            # if (current == prev_current) and (len(self.chkd_candidates) == prev_len):
+            #     adjust_val = (no_candidates-len(self.chkd_candidates))/no_candidates
+            #     if adjust_val < self.acc_threshold:
+            #         adjust_val = self.acc_threshold
+            #     current.adjust_c(adjust_val)
 
-                    #indexes = np.arange(len(labels))
-                    #width = 1
-                    
-                    #plt.bar(indexes, values, width)
-                    #plt.xticks(indexes + width * 0.5, labels)
-                    #plt.show()
-                    
-                    #labels, values = zip(*Counter(printcount4).items())
+            # Keep track of how many candidates we have checked
+            prev_len = len(self.chkd_candidates)
+            # Keep track of previous node
+            prev_current = current
 
-                   # indexes = np.arange(len(labels))
-                   # width = 1
-                    
-                   # plt.bar(indexes, values, width)
-                   # plt.xticks(indexes + width * 0.5, labels)
-                  #  plt.show()
-                    
-                  #  labels, values = zip(*Counter(printcount5).items())
+            # Get best candidate from all checked ones so far
+            optimal_fx = max(iter(self.chkd_candidates.values()))
+            DS = [(ast.literal_eval(x), v) for (x,v) in self.chkd_candidates.items()]
+            optimal_candidate = [k for (k, v) in DS if v == optimal_fx]
+            fidelity=optimal_fx
 
-                  #  indexes = np.arange(len(labels))
-                  #  width = 1
-                    
-                  #  plt.bar(indexes, values, width)
-                  #  plt.xticks(indexes + width * 0.5, labels)
-                  #  plt.show()
-                                    
-                
-                
-                
-                #if display:
-                #    print ("round ", round_no)
-                ##    print ("checked candidates = ", len(self.chkd_candidates))
-                #    if self.max_flag:
-                #        print ("current best = ", max(iter(self.chkd_candidates.values())))
-                #    else:
-                #        print ("current best = ", min(iter(self.chkd_candidates.values())))
-                round_no += 1
-        self.result.format(no_candidates=no_candidates, chkd_candidates=self.chkd_candidates, max_flag=self.max_flag)
-        self.result.no_nodes, visits, self.result.max_depth_reached = self.root.get_info()
-        self.result.avg_node_visit = visits / self.result.no_nodes
-        return self.result
+            round_no += 1
+
+    self.result.format(no_candidates=no_candidates, chkd_candidates=self.chkd_candidates, max_flag=self.max_flag)
+    self.result.no_nodes, visits, self.result.max_depth_reached = self.root.get_info()
+    self.result.avg_node_visit = visits / self.result.no_nodes
+    return self.result
