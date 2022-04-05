@@ -100,7 +100,7 @@ for instance in range(n_instances):
    
     # creation of the SAT class that contains the method for time evolution
     if annealing_type=='analog':
-        pathdesign = Annealer(dt, T, H0, Hf, psi0, psif)
+        pathdesign = AnalogAnnealer(dt, T, H0, Hf, psi0, psif)
         optimization_space = 'frequency'
     elif annealing_type=='digital':
         pathdesign = DigitalAnnealer(n_qubit, Nt, Mcut, H0, Hf, psi0, psif)
@@ -122,7 +122,7 @@ for instance in range(n_instances):
                                 x0=None, optimization_space=optimization_space, jacobian=True)
 
     elif opt_type == 'MCTS':
-        obs, fid = methods.mcts(1, n_qubit,T, Mcut , Nt, H0,Hf,psi0,psif,n_candidates,cost_function_type=cost_function_type,
+        obs, fid = methods.mcts(n_qubit,T, Mcut , Nt, H0,Hf,psi0,psif,n_candidates,cost_function_type=cost_function_type,
                                 annealing_type=annealing_type, optimization_space=optimization_space)
         obs=obs.reshape(-1)
         nfev=n_candidates 
