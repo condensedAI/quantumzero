@@ -122,10 +122,10 @@ for instance in range(n_instances):
                                 x0=None, optimization_space=optimization_space, jacobian=True)
 
     elif opt_type == 'MCTS':
-        obs, fid = methods.mcts(n_qubit,T, Mcut , Nt, H0,Hf,psi0,psif,n_candidates,cost_function_type=cost_function_type,
+        obs, fid, nfev = methods.mcts(n_qubit,T, Mcut , Nt, H0,Hf,psi0,psif,n_candidates,cost_function_type=cost_function_type,
                                 annealing_type=annealing_type, optimization_space=optimization_space)
         obs=obs.reshape(-1)
-        nfev=n_candidates 
+        #nfev=n_candidates 
     
     if annealing_type == 'analog':    
         en, fid = pathdesign.anneal(obs)
