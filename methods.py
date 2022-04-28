@@ -147,11 +147,11 @@ def mcts(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, 
                                 candidate_pool_size=100,
                                 ucb="mean")
 
-    solution, fidelity = mctree.search(display=True, no_candidates=ncandidates)
+    solution, fidelity, num_rounds = mctree.search(display=True, no_candidates=ncandidates)
 
     solution = -0.2+np.array(solution)%40*0.01
 
-    return solution, fidelity
+    return solution, fidelity, num_rounds
 
 def mcts_v2(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, psif, ncandidates, cost_function_type='energy', annealing_type='analog', optimization_space='frequency'):
 
