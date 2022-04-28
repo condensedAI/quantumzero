@@ -306,9 +306,16 @@ class Tree:
             return
 
         fidelity = 0
+        fidelity_old = 0
         self.chkd_candidates = {}
+        #modified convergence condition: if fon num_stuck_iter the fidelity does not improve more than convengence_tol
+        #the mcts is going to stop
+
+        convergence_tol = 0.001 #TO BE MODIFIED IN FUTURE VERSION
+        num_am_I_stuck=0
+        num_stuck_iter = 20
         # Search until we hit a good fidelity or until we've checked more candidates than asked for
-        while fidelity<0.99 and len(self.chkd_candidates) < no_candidates:
+        while num_am_I_stuck < num_stuck_iter and len(self.chkd_candidates) < no_candidates:
 
             # Select new node (traverse tree from root until we hit a non-fully expanded node)
             current = self.root.select(self.max_flag, self.ucb_mean)
@@ -343,6 +350,7 @@ class Tree:
                         # Add reward to list if it is not there yet
                         if str(struct) not in self.chkd_candidates.keys():
                             self.chkd_candidates[str(struct)] = self.get_reward(struct)
+                            round_no+=1
                         e = self.chkd_candidates[str(struct)]
                         rewards.append(e)
 
@@ -376,10 +384,13 @@ class Tree:
             optimal_candidate = [k for (k, v) in DS if v == optimal_fx]
             fidelity = optimal_fx
 
-            round_no += 1
+            #round_no += 1
+            if np.abs(fidelity-fidelity_old) < convergence_tol:
+                num_am_I_stuck +=1
+            fidelity_old=np.copy(fidelity)
 
         #self.result.format(no_candidates=no_candidates, chkd_candidates=self.chkd_candidates, max_flag=self.max_flag)
         #self.result.no_nodes, visits, self.result.max_depth_reached = self.root.get_info()
         #self.result.avg_node_visit = visits / self.result.no_nodes
         print("Num rounds: ", round_no)
-        return optimal_candidate, fidelity #self.result
+        return optimal_candidate, fidelity, round_no 
