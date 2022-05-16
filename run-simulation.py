@@ -67,7 +67,7 @@ else:
 ###########################################################################
 
 # DEfinition of the functions used by the scipy minimizer
-
+'''
 def cost_function(x):
     en, fid = pathdesign.anneal(x)
     if cost_function_type == 'energy':    
@@ -76,7 +76,7 @@ def cost_function(x):
         return 1-fid[-1]
     else:
         raise ValueError(f'Wrong cost function {cost_function_type}, exit')
-
+'''
 ##############################################################################
 
 if opt_type=='BFGS':
@@ -124,14 +124,17 @@ for instance in range(n_instances):
 
     # optimization of the FOurier component. For the moment the minimization algorithm is fixed, we might want to leave it as an external param
     if opt_type == 'BFGS' and annealing_type == 'analog': 
+        obs, fid, nfev = methods.gradient_descent(n_qubit, T, Mcut, Nt, H0, Hf, psi0, psif, n_candidates, cost_function_type=cost_function_type,
+                                                 optimization_space=optimization_space, noise=0.1)
+        '''
         if instance > 0 and retrain:
             res=minimize(cost_function, obs, method='BFGS', options={'gtol':1e-2, 'disp':True} )
         else:
             res=minimize(cost_function, bzero, method='BFGS', options={'gtol':1e-2, 'disp':True} )
-
+        
         obs = res.x
         nfev=res.nfev 
-   
+        '''
     elif opt_type =='BFGS' and annealing_type =='digital':
         obs, fid, nfev = methods.qaoa(n_qubit, Mcut, Nt, H0, Hf, psi0, psif, n_candidates, cost_function_type=cost_function_type,
                                 x0=None, optimization_space=optimization_space, jacobian=True)
@@ -176,7 +179,7 @@ header_results = header+'\n' + '1-instance, 2-fidelity, 3-energy, 4-n_fev, 5-lin
 
 header_tevo = header+'\n' + '1-time, 2-fidelity, 3-energy, 4-lin. fidelity, 4-lin. energy' 
 
-filename_results = f'{model}-QAperformance__N{n_qubit}_T{T}_Mcut{Mcut}_cf-{cost_function_type}.dat'
+filename_results = f'{model}-QAperformance_N{n_qubit}_T{T}_Mcut{Mcut}_cf-{cost_function_type}.dat'
 
 filename_tevo = f'{model}-QAtevo_N{n_qubit}_T{T}_Mcut{Mcut}_cf-{cost_function_type}.dat'
 
