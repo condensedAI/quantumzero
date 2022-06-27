@@ -1,5 +1,4 @@
 from __future__ import division
-from result import Result
 import collections
 import random
 import numpy as np
@@ -209,8 +208,6 @@ class Tree:
 
         # Create root node
         self.root = Node(value='R', children_values=self.atom_types, struct=[None]*self.no_positions)
-
-        self.result = Result()
         self.play_out = play_out
 
     def _enumerate_cand(self, struct, size):

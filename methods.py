@@ -295,7 +295,7 @@ def qaoa(n_qubit, num_frequency_components, num_trot_step, H0, Hf, psi0, psif, n
 
 
 
-def gradient_descent(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, psif, ncandidates, cost_function_type='energy', optimization_space='frequency', noise=0.1):
+def gradient_descent(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, psif, ncandidates, cost_function_type='energy', optimization_space='frequency', noise=0.1, verbose=False):
 
     annealer = AnalogAnnealer(T/num_trotter_steps, T, H0, Hf, psi0, psif)
     n_search = num_frequency_components
@@ -313,10 +313,11 @@ def gradient_descent(n_qubit, T, num_frequency_components, num_trotter_steps, H0
     reward = []
     num_queries = []
     if ncandidates==1:
-        noise=0 
+        noise=0
+        
     for nc in range(ncandidates):
         bzero = np.zeros(n_search) + noise*(np.random.rand(n_search)-0.5)
-        res=minimize(cost_function, bzero, method='BFGS', options={'gtol':1e-2, 'disp':True} )
+        res = minimize(cost_function, bzero, method='BFGS', options={'gtol':1e-2, 'disp':verbose} )
 
         solution.append(res.x)
         reward.append(res.fun)

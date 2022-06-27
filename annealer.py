@@ -33,7 +33,7 @@ class AnalogAnnealer():
 
         # Perform the full time evolution
         H = [[self.H0, lambda t,args : 1 - self.s(t,args)], [self.Hf, self.s]]
-        output = mesolve(H, self.psi0, t, args=args)
+        output = mesolve(H, self.psi0, t, args=args);
 
         # Compute the fidelity in all intermediate steps defined by the array t
         fidelity = []
