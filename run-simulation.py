@@ -172,8 +172,9 @@ tevo=np.array(tevo).reshape([(Nt+1)*n_instances,5])
 # Saving files
 
 outdir = 'Output/'+opt_type+'/'+annealing_type+'_'+optimization_space+'/retrain'+str(retrain)+'/N' + str(n_qubit) + '/'
+
 # This line works only on unix systems
-subprocess.run(['mkdir', '-p', outdir])
+os.makedirs(outdir, exist_ok=True)
 
 header_results = header+'\n' + '1-instance, 2-fidelity, 3-energy, 4-n_fev, 5-lin. fidelity, 6-lin. energy'
 
