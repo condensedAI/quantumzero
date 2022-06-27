@@ -147,11 +147,11 @@ def mcts(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, 
                                 candidate_pool_size=100,
                                 ucb="mean")
 
-    solution, fidelity = mctree.search(display=True, no_candidates=ncandidates)
+    solution, fidelity, num_rounds = mctree.search(display=True, no_candidates=ncandidates)
 
     solution = -0.2+np.array(solution)%40*0.01
 
-    return solution, fidelity
+    return solution, fidelity, num_rounds
 
 def mcts_v2(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, psif, ncandidates, cost_function_type='energy', annealing_type='analog', optimization_space='frequency'):
 
@@ -286,6 +286,38 @@ def qaoa(n_qubit, num_frequency_components, num_trot_step, H0, Hf, psi0, psif, n
             res = minimize(get_reward, x0, jac=get_gradient, args=(cost_function_type, optimization_space),  method='BFGS',options={'gtol':1e-2, 'disp': True})
         else:
             res = minimize(get_reward, x0,args=(cost_function_type, optimization_space),  method='BFGS',options={'gtol':1e-2, 'disp': True})
+        solution.append(res.x)
+        reward.append(res.fun)
+        num_queries.append(res.nfev)
+
+    best_result = np.argmin(np.array(reward))
+    return solution[best_result], reward[best_result], np.array(num_queries).sum()
+
+
+
+def gradient_descent(n_qubit, T, num_frequency_components, num_trotter_steps, H0, Hf, psi0, psif, ncandidates, cost_function_type='energy', optimization_space='frequency', noise=0.1):
+
+    annealer = AnalogAnnealer(T/num_trotter_steps, T, H0, Hf, psi0, psif)
+    n_search = num_frequency_components
+    
+    def cost_function(x):
+        en, fid = annealer.anneal(x)
+        if cost_function_type == 'energy':
+            return np.real(en)[-1]
+        elif cost_function_type == 'fidelity':
+            return 1-fid[-1]
+        else:
+            raise ValueError(f'Wrong cost function {cost_function_type}, exit')
+
+    solution = []
+    reward = []
+    num_queries = []
+    if ncandidates==1:
+        noise=0 
+    for nc in range(ncandidates):
+        bzero = np.zeros(n_search) + noise*(np.random.rand(n_search)-0.5)
+        res=minimize(cost_function, bzero, method='BFGS', options={'gtol':1e-2, 'disp':True} )
+
         solution.append(res.x)
         reward.append(res.fun)
         num_queries.append(res.nfev)

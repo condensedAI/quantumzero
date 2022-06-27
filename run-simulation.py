@@ -17,7 +17,7 @@ import subprocess
 # definition of the input parameters
 
 parser=argparse.ArgumentParser(description='Quantum annealing path optimization on 3-SAT hard instances')
-
+parser.add_argument('model', type=str, help = '<3SAT> or <MaxCut>, the latter only implemented on 3-regular graph with uniform weights') 
 parser.add_argument('Opt_type', type=str, help='<BFGS> or <MCTS>, determine which algorithm is used for the path optimization')
 parser.add_argument('--n_qubit', default=7, type=int, help='Number of spin variables, default 7')
 parser.add_argument('--n_instances', default=1, type=int, help='Number of 3-SAT instances solved, default 1')
@@ -33,6 +33,7 @@ parser.add_argument('--retrain', default=False, type=bool, help='If True, the BF
 
 args = parser.parse_args()
 
+model = args.model
 opt_type = args.Opt_type
 assert opt_type=='BFGS' or opt_type=='MCTS'
 
@@ -47,16 +48,26 @@ optimization_space=args.optimization_space
 n_candidates = args.n_candidates
 retrain = args.retrain
 
-filename='dataset/sat'+str(n_qubit)+'.txt'
-dataset = np.loadtxt(filename)
+if model == '3SAT':
+    filename='dataset/sat'+str(n_qubit)+'.txt'
+    dataset = np.loadtxt(filename)
 
-if dataset.shape[0] < n_instances:
-    n_instances = dataset.shape[0]
+    if dataset.shape[0] < n_instances:
+        n_instances = dataset.shape[0]
 
+elif model =='MaxCut':
+    filename = f'max_cut/{n_qubit:02d}_3_3.scd'
+    dataset=[]
+    for g in convert(filename, n_qubit, 3):
+        dataset.append(g)
+    if len(dataset) < n_instances:
+        n_instances = len(dataset)
+else:
+    raise ValueError(f'model type {model} not implemented')
 ###########################################################################
 
 # DEfinition of the functions used by the scipy minimizer
-
+'''
 def cost_function(x):
     en, fid = pathdesign.anneal(x)
     if cost_function_type == 'energy':    
@@ -65,7 +76,7 @@ def cost_function(x):
         return 1-fid[-1]
     else:
         raise ValueError(f'Wrong cost function {cost_function_type}, exit')
-
+'''
 ##############################################################################
 
 if opt_type=='BFGS':
@@ -94,13 +105,17 @@ tevo=[]
 for instance in range(n_instances):
     
     # definition of the problem and mixing Hamiltonian (should be improved to avoid uselss repetitions of the same operation) 
-    result=dataset[instance,:].astype(int)
-    #HB,HP,psi0,psif=system.satSystem(n_qubit,result)
-    H0,Hf,psi0,psif=create_3SAT_H_and_psi(n_qubit,result)
-   
+    if model =='3SAT':
+        result=dataset[instance,:].astype(int)
+        H0,Hf,psi0,psif=create_3SAT_H_and_psi(n_qubit,result)
+
+    elif model =='MaxCut':
+        result = dataset[instance]
+        H0, Hf, psi0, psif = create_MaxCut_H_and_psi(n_qubit,result)
+
     # creation of the SAT class that contains the method for time evolution
     if annealing_type=='analog':
-        pathdesign = Annealer(dt, T, H0, Hf, psi0, psif)
+        pathdesign = AnalogAnnealer(dt, T, H0, Hf, psi0, psif)
         optimization_space = 'frequency'
     elif annealing_type=='digital':
         pathdesign = DigitalAnnealer(n_qubit, Nt, Mcut, H0, Hf, psi0, psif)
@@ -109,23 +124,26 @@ for instance in range(n_instances):
 
     # optimization of the FOurier component. For the moment the minimization algorithm is fixed, we might want to leave it as an external param
     if opt_type == 'BFGS' and annealing_type == 'analog': 
+        obs, fid, nfev = methods.gradient_descent(n_qubit, T, Mcut, Nt, H0, Hf, psi0, psif, n_candidates, cost_function_type=cost_function_type,
+                                                 optimization_space=optimization_space, noise=0.1)
+        '''
         if instance > 0 and retrain:
             res=minimize(cost_function, obs, method='BFGS', options={'gtol':1e-2, 'disp':True} )
         else:
             res=minimize(cost_function, bzero, method='BFGS', options={'gtol':1e-2, 'disp':True} )
-
+        
         obs = res.x
         nfev=res.nfev 
-   
+        '''
     elif opt_type =='BFGS' and annealing_type =='digital':
         obs, fid, nfev = methods.qaoa(n_qubit, Mcut, Nt, H0, Hf, psi0, psif, n_candidates, cost_function_type=cost_function_type,
                                 x0=None, optimization_space=optimization_space, jacobian=True)
 
     elif opt_type == 'MCTS':
-        obs, fid = methods.mcts(1, n_qubit,T, Mcut , Nt, H0,Hf,psi0,psif,n_candidates,cost_function_type=cost_function_type,
+        obs, fid, nfev = methods.mcts(n_qubit,T, Mcut , Nt, H0,Hf,psi0,psif,n_candidates,cost_function_type=cost_function_type,
                                 annealing_type=annealing_type, optimization_space=optimization_space)
         obs=obs.reshape(-1)
-        nfev=n_candidates 
+        #nfev=n_candidates 
     
     if annealing_type == 'analog':    
         en, fid = pathdesign.anneal(obs)
@@ -161,11 +179,11 @@ header_results = header+'\n' + '1-instance, 2-fidelity, 3-energy, 4-n_fev, 5-lin
 
 header_tevo = header+'\n' + '1-time, 2-fidelity, 3-energy, 4-lin. fidelity, 4-lin. energy' 
 
-filename_results = '3SAT-QAperformance_N'+str(n_qubit)+'_T'+str(T)+'_Mcut'+str(Mcut) + '_cf-'+cost_function_type +'.dat'
+filename_results = f'{model}-QAperformance_N{n_qubit}_T{T}_Mcut{Mcut}_cf-{cost_function_type}.dat'
 
-filename_tevo = '3SAT-QAtevo_N'+str(n_qubit)+'_T'+str(T)+'_Mcut'+str(Mcut) + '_cf-'+cost_function_type +'.dat'
+filename_tevo = f'{model}-QAtevo_N{n_qubit}_T{T}_Mcut{Mcut}_cf-{cost_function_type}.dat'
 
-filename_path = '3SAT-QApath_N'+str(n_qubit)+'_T'+str(T)+'_Mcut'+str(Mcut) + '_cf-'+cost_function_type +'.dat'
+filename_path = f'{model}-QApath_N{n_qubit}_T{T}_Mcut{Mcut}_cf-{cost_function_type}.dat'
 
 np.savetxt(outdir+filename_results, np.array(best_result), header=header_results)
 np.savetxt(outdir+filename_tevo, tevo, header=header_tevo)
