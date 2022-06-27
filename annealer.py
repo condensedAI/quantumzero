@@ -27,7 +27,7 @@ class AnalogAnnealer():
             args['b{}'.format(i+1)] = b
 
         # The total number of steps
-        NL=self.T/self.dt
+        NL = self.T/self.dt
         # Create a grid of linearly spaced time points
         t = np.linspace(0, self.T, int(NL+1))
 

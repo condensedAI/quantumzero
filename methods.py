@@ -10,8 +10,8 @@ from annealer import *
 
 import mcts as mod_mcts
 
-def linear(num_frequency_components, T, HB, HP, psi0, psif):
-    annealer = AnalogAnnealer(0.5, T, HB, HP, psi0, psif)
+def linear(num_frequency_components, T, num_time_steps, HB, HP, psi0, psif):
+    annealer = AnalogAnnealer(T/num_time_steps, T, HB, HP, psi0, psif)
 
     solution = np.array(np.zeros(num_frequency_components))
     energy, fidelity =  annealer.anneal(solution)

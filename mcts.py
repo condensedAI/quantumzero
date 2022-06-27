@@ -77,12 +77,12 @@ class Node:
         # Recursively search from the selected child node
         return self.children[idx].select(max_flag, ucb_mean)
 
-    def select_v2(self, position):
+    def select_v2(self, position, num_children_to_expand):
         if not self.has_all_children():
-            expanded = self.expand(position, 1)[0]
+            expanded = self.expand(position, num_children_to_expand)
             return expanded
         else:
-            return self.select_best_child()
+            return [self.select_best_child()]
 
     def back_prop(self, reward):
         # Back propagate through this node
@@ -268,7 +268,7 @@ class Tree:
             if str(candidate) not in self.chkd_candidates.keys():
                 self.chkd_candidates[str(candidate)] = self.get_reward(candidate)
             rewards.append(self.chkd_candidates[str(candidate)])
-            
+
         return np.mean(rewards)
 
     def get_best_next_node(self, start_node, position, num_simulations):
@@ -277,14 +277,15 @@ class Tree:
         """
         for i in range(num_simulations):
             # Select
-            current = start_node.select_v2(position)
-
-            # Get reward
-            rewards = self.rollout(current, self.play_out)
-
-            # Back propagate the reward
-            current.back_prop(rewards)
-
+            current = start_node.select_v2(position, self.expand_children)
+            
+            # Get rewards for each expanded child
+            for c in current:
+                reward = self.rollout(c, self.play_out)
+                
+                # Back propagate the reward
+                c.back_prop(reward)
+            
         # Return best
         return start_node.select_best_child()
 
@@ -345,8 +346,6 @@ class Tree:
                             self.chkd_candidates[str(struct)] = self.get_reward(struct)
                         e = self.chkd_candidates[str(struct)]
                         rewards.append(e)
-
-                    rewards[:] = [x for x in rewards if x is not False]
 
                     # If there were new cases
                     if len(rewards)!=0:
